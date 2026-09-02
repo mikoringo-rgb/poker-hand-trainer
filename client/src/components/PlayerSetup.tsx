@@ -1,97 +1,109 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+
+type GameMode = 'holdem' | 'omaha' | 'big-o';
 
 interface PlayerSetupProps {
-  onStart: (playerCount: number, gameMode: 'holdem' | 'omaha' | 'omaha-hilo') => void;
+  onStart: (playerCount: number, gameMode: GameMode) => void;
 }
 
 export default function PlayerSetup({ onStart }: PlayerSetupProps) {
-  const [selectedCount, setSelectedCount] = useState(2);
-  const [gameMode, setGameMode] = useState<'holdem' | 'omaha' | 'omaha-hilo'>('holdem');
-  
+  const [playerCount, setPlayerCount] = useState(4);
+  const [gameMode, setGameMode] = useState<GameMode>('big-o');
+
+  const modes: {
+    id: GameMode;
+    title: string;
+    description: string;
+  }[] = [
+    {
+      id: 'holdem',
+      title: "Texas Hold'em",
+      description: '2 hole cards',
+    },
+    {
+      id: 'omaha',
+      title: 'Omaha',
+      description: '4 hole cards · Exactly 2 + 3',
+    },
+    {
+      id: 'big-o',
+      title: 'Big O',
+      description: '5 hole cards · Hi-Lo 8 or Better',
+    },
+  ];
+
   return (
-    <div className="min-h-screen bg-black flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-gradient-to-br from-neutral-950 via-black to-neutral-950"></div>
-      
-      <Card className="w-full max-w-md bg-white/5 backdrop-blur-sm border-white/10 text-white relative z-10">
-        <CardHeader>
-          <CardTitle className="text-2xl text-center text-white font-light tracking-wide">Poker Training</CardTitle>
-          <CardDescription className="text-center text-white/50 font-light text-sm">
-            Select Mode & Players
-          </CardDescription>
+    <div className="min-h-screen flex items-center justify-center p-4 bg-background">
+      <Card className="w-full max-w-md">
+        <CardHeader className="text-center">
+          <CardTitle className="text-2xl">
+            Poker Hand Trainer
+          </CardTitle>
         </CardHeader>
+
         <CardContent className="space-y-6">
-          <div>
-            <div className="text-xs font-light text-white/60 mb-3 tracking-wider">GAME MODE</div>
-            <div className="grid grid-cols-1 gap-2">
-              <Button
-                data-testid="button-mode-holdem"
-                onClick={() => setGameMode('holdem')}
-                variant="ghost"
-                className={`h-10 text-sm font-light border transition-all ${
-                  gameMode === 'holdem' 
-                    ? 'border-yellow-400 text-yellow-400 bg-yellow-400/10' 
-                    : 'border-white/20 text-white/80 hover:border-white/40'
-                }`}
-              >
-                Texas Hold'em
-              </Button>
-              <Button
-                data-testid="button-mode-omaha"
-                onClick={() => setGameMode('omaha')}
-                variant="ghost"
-                className={`h-10 text-sm font-light border transition-all ${
-                  gameMode === 'omaha' 
-                    ? 'border-yellow-400 text-yellow-400 bg-yellow-400/10' 
-                    : 'border-white/20 text-white/80 hover:border-white/40'
-                }`}
-              >
-                Omaha PLO
-              </Button>
-              <Button
-                data-testid="button-mode-omaha-hilo"
-                onClick={() => setGameMode('omaha-hilo')}
-                variant="ghost"
-                className={`h-10 text-sm font-light border transition-all ${
-                  gameMode === 'omaha-hilo' 
-                    ? 'border-yellow-400 text-yellow-400 bg-yellow-400/10' 
-                    : 'border-white/20 text-white/80 hover:border-white/40'
-                }`}
-              >
-                Omaha Hi-Lo
-              </Button>
+          <div className="space-y-2">
+            <div className="text-sm font-medium">
+              Game
+            </div>
+
+            <div className="grid grid-cols-3 gap-2">
+              {modes.map((mode) => (
+                <Button
+                  key={mode.id}
+                  type="button"
+                  variant={
+                    gameMode === mode.id
+                      ? 'default'
+                      : 'outline'
+                  }
+                  className="h-auto min-h-20 flex flex-col gap-1 px-2 py-3"
+                  onClick={() => setGameMode(mode.id)}
+                >
+                  <span className="font-semibold">
+                    {mode.title}
+                  </span>
+
+                  <span className="text-[10px] leading-tight opacity-80 whitespace-normal text-center">
+                    {mode.description}
+                  </span>
+                </Button>
+              ))}
             </div>
           </div>
-          
-          <div>
-            <div className="text-xs font-light text-white/60 mb-3 tracking-wider">PLAYERS</div>
-            <div className="grid grid-cols-3 gap-3">
+
+          <div className="space-y-2">
+            <div className="text-sm font-medium">
+              Players
+            </div>
+
+            <div className="grid grid-cols-3 gap-2">
               {[2, 3, 4].map((count) => (
                 <Button
                   key={count}
-                  data-testid={`button-player-count-${count}`}
-                  onClick={() => setSelectedCount(count)}
-                  variant="ghost"
-                  className={`h-16 text-xl font-light border transition-all ${
-                    selectedCount === count 
-                      ? 'border-yellow-400 text-yellow-400 bg-yellow-400/10' 
-                      : 'border-white/20 text-white/80 hover:border-white/40'
-                  }`}
+                  type="button"
+                  variant={
+                    playerCount === count
+                      ? 'default'
+                      : 'outline'
+                  }
+                  onClick={() => setPlayerCount(count)}
                 >
                   {count}
                 </Button>
               ))}
             </div>
           </div>
-          
+
           <Button
-            data-testid="button-start-game"
-            onClick={() => onStart(selectedCount, gameMode)}
-            variant="ghost"
-            className="w-full h-10 text-sm font-light tracking-wider border border-yellow-400 text-yellow-400 bg-yellow-400/10 hover:bg-yellow-400/20"
+            type="button"
+            className="w-full"
+            size="lg"
+            onClick={() => onStart(playerCount, gameMode)}
           >
-            START
+            Start Training
           </Button>
         </CardContent>
       </Card>
