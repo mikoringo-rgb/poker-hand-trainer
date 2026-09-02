@@ -1,374 +1,541 @@
-import type { Card, Suit, Rank } from '@shared/schema';
+import type { Card, HandEvaluation } from "@shared/schema";
 
-const rankValues: Record<Rank, number> = {
-  '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9,
-  '10': 10, 'J': 11, 'Q': 12, 'K': 13, 'A': 14
+// ─────────────────────────────────────────────────────────────
+// High hand evaluation
+// ─────────────────────────────────────────────────────────────
+
+const RANK_VALUE: Record<Card["rank"], number> = {
+  "2": 2,
+  "3": 3,
+  "4": 4,
+  "5": 5,
+  "6": 6,
+  "7": 7,
+  "8": 8,
+  "9": 9,
+  "10": 10,
+  J: 11,
+  Q: 12,
+  K: 13,
+  A: 14,
 };
 
-export function createDeck(): Card[] {
-  const suits: Suit[] = ['♠', '♥', '♦', '♣'];
-  const ranks: Rank[] = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
-  const deck: Card[] = [];
-  
-  for (const suit of suits) {
-    for (const rank of ranks) {
-      deck.push({ suit, rank });
+function combinations<T>(items: T[], choose: number): T[][] {
+  const result: T[][] = [];
+
+  const walk = (start: number, picked: T[]) => {
+    if (picked.length === choose) {
+      result.push([...picked]);
+      return;
     }
-  }
-  
-  return shuffleDeck(deck);
-}
 
-export function shuffleDeck(deck: Card[]): Card[] {
-  const shuffled = [...deck];
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-  }
-  return shuffled;
-}
-
-export function evaluateHand(playerCards: Card[], communityCards: Card[]): {
-  rank: number;
-  name: string;
-  usedCards: Card[];
-  description: string;
-  handScore: number[];
-} {
-  const allCards = [...playerCards, ...communityCards];
-  
-  let bestHand = { 
-    rank: 0, 
-    name: 'High Card', 
-    usedCards: [] as Card[], 
-    description: '',
-    handScore: [0]
+    for (let i = start; i < items.length; i++) {
+      picked.push(items[i]);
+      walk(i + 1, picked);
+      picked.pop();
+    }
   };
-  
-  const combinations = getCombinations(allCards, 5);
-  
-  for (const combo of combinations) {
-    const evaluation = evaluateFiveCards(combo);
-    if (compareHands(evaluation.handScore, bestHand.handScore) > 0) {
-      bestHand = evaluation;
-    }
-  }
-  
-  return bestHand;
+
+  walk(0, []);
+  return result;
 }
 
-export function evaluateOmahaHand(playerCards: Card[], communityCards: Card[]): {
-  rank: number;
-  name: string;
-  usedCards: Card[];
-  description: string;
-  handScore: number[];
-} {
-  let bestHand = { 
-    rank: 0, 
-    name: 'High Card', 
-    usedCards: [] as Card[], 
-    description: '',
-    handScore: [0]
+function cardKey(card: Card): string {
+  return `${card.rank}${card.suit}`;
+}
+
+function sameCardSet(a: Card[], b: Card[]): boolean {
+  if (a.length !== b.length) return false;
+
+  const left = a.map(cardKey).sort();
+  const right = b.map(cardKey).sort();
+
+  return left.every((key, index) => key === right[index]);
+}
+
+function evaluateFiveCardHigh(cards: Card[]): HandEvaluation {
+  const values = cards
+    .map((card) => RANK_VALUE[card.rank])
+    .sort((a, b) => b - a);
+
+  const suits = cards.map((card) => card.suit);
+
+  const counts = new Map<number, number>();
+  for (const value of values) {
+    counts.set(value, (counts.get(value) ?? 0) + 1);
+  }
+
+  const uniqueValues = [...new Set(values)].sort((a, b) => b - a);
+
+  let straightHigh = 0;
+
+  if (uniqueValues.length === 5) {
+    if (uniqueValues[0] - uniqueValues[4] === 4) {
+      straightHigh = uniqueValues[0];
+    } else if (
+      uniqueValues[0] === 14 &&
+      uniqueValues[1] === 5 &&
+      uniqueValues[2] === 4 &&
+      uniqueValues[3] === 3 &&
+      uniqueValues[4] === 2
+    ) {
+      straightHigh = 5;
+    }
+  }
+
+  const isFlush = suits.every((suit) => suit === suits[0]);
+
+  const grouped = [...counts.entries()].sort((a, b) => {
+    if (a[1] !== b[1]) return b[1] - a[1];
+    return b[0] - a[0];
+  });
+
+  // Straight Flush
+  if (isFlush && straightHigh) {
+    return {
+      rank: 8,
+      name: straightHigh === 14 ? "Royal Flush" : "Straight Flush",
+      values: [straightHigh],
+      cards,
+    };
+  }
+
+  // Four of a Kind
+  if (grouped[0][1] === 4) {
+    const quad = grouped[0][0];
+    const kicker = grouped[1][0];
+
+    return {
+      rank: 7,
+      name: "Four of a Kind",
+      values: [quad, kicker],
+      cards,
+    };
+  }
+
+  // Full House
+  if (grouped[0][1] === 3 && grouped[1][1] === 2) {
+    return {
+      rank: 6,
+      name: "Full House",
+      values: [grouped[0][0], grouped[1][0]],
+      cards,
+    };
+  }
+
+  // Flush
+  if (isFlush) {
+    return {
+      rank: 5,
+      name: "Flush",
+      values,
+      cards,
+    };
+  }
+
+  // Straight
+  if (straightHigh) {
+    return {
+      rank: 4,
+      name: "Straight",
+      values: [straightHigh],
+      cards,
+    };
+  }
+
+  // Three of a Kind
+  if (grouped[0][1] === 3) {
+    const trips = grouped[0][0];
+    const kickers = grouped
+      .slice(1)
+      .map(([value]) => value)
+      .sort((a, b) => b - a);
+
+    return {
+      rank: 3,
+      name: "Three of a Kind",
+      values: [trips, ...kickers],
+      cards,
+    };
+  }
+
+  // Two Pair
+  if (grouped[0][1] === 2 && grouped[1][1] === 2) {
+    const pairs = [grouped[0][0], grouped[1][0]].sort((a, b) => b - a);
+    const kicker = grouped[2][0];
+
+    return {
+      rank: 2,
+      name: "Two Pair",
+      values: [...pairs, kicker],
+      cards,
+    };
+  }
+
+  // One Pair
+  if (grouped[0][1] === 2) {
+    const pair = grouped[0][0];
+    const kickers = grouped
+      .slice(1)
+      .map(([value]) => value)
+      .sort((a, b) => b - a);
+
+    return {
+      rank: 1,
+      name: "One Pair",
+      values: [pair, ...kickers],
+      cards,
+    };
+  }
+
+  // High Card
+  return {
+    rank: 0,
+    name: "High Card",
+    values,
+    cards,
   };
-  
-  const holeCombos = getCombinations(playerCards, 2);
-  const boardCombos = getCombinations(communityCards, 3);
-  
-  for (const holeCombo of holeCombos) {
-    for (const boardCombo of boardCombos) {
-      const fiveCards = [...holeCombo, ...boardCombo];
-      const evaluation = evaluateFiveCards(fiveCards);
-      if (compareHands(evaluation.handScore, bestHand.handScore) > 0) {
-        bestHand = evaluation;
-      }
+}
+
+export function compareHighHands(
+  a: HandEvaluation,
+  b: HandEvaluation,
+): number {
+  if (a.rank !== b.rank) {
+    return a.rank > b.rank ? 1 : -1;
+  }
+
+  const length = Math.max(a.values.length, b.values.length);
+
+  for (let i = 0; i < length; i++) {
+    const av = a.values[i] ?? 0;
+    const bv = b.values[i] ?? 0;
+
+    if (av !== bv) {
+      return av > bv ? 1 : -1;
     }
   }
-  
-  return bestHand;
-}
 
-function getCombinations(arr: Card[], k: number): Card[][] {
-  if (k === 0) return [[]];
-  if (arr.length === 0) return [];
-  
-  const [first, ...rest] = arr;
-  const withFirst = getCombinations(rest, k - 1).map(combo => [first, ...combo]);
-  const withoutFirst = getCombinations(rest, k);
-  
-  return [...withFirst, ...withoutFirst];
-}
-
-function compareHands(score1: number[], score2: number[]): number {
-  for (let i = 0; i < Math.max(score1.length, score2.length); i++) {
-    const val1 = score1[i] || 0;
-    const val2 = score2[i] || 0;
-    if (val1 > val2) return 1;
-    if (val1 < val2) return -1;
-  }
   return 0;
 }
 
-function evaluateFiveCards(cards: Card[]): {
-  rank: number;
-  name: string;
-  usedCards: Card[];
-  description: string;
-  handScore: number[];
-} {
-  const sorted = [...cards].sort((a, b) => rankValues[b.rank] - rankValues[a.rank]);
-  
-  const isFlush = cards.every(card => card.suit === cards[0].suit);
-  const straightResult = checkStraight(sorted);
-  const isStraight = straightResult.isStraight;
-  
-  const rankCounts = new Map<Rank, number>();
-  sorted.forEach(card => {
-    rankCounts.set(card.rank, (rankCounts.get(card.rank) || 0) + 1);
-  });
-  
-  const countGroups = Array.from(rankCounts.entries())
-    .sort((a, b) => {
-      if (b[1] !== a[1]) return b[1] - a[1];
-      return rankValues[b[0]] - rankValues[a[0]];
-    });
-  
-  const counts = countGroups.map(g => g[1]);
-  const ranksInOrder = countGroups.map(g => rankValues[g[0]]);
-  
-  if (isFlush && isStraight) {
-    return { 
-      rank: 9, 
-      name: 'Straight Flush', 
-      usedCards: sorted,
-      description: `${sorted[0].rank}-high Straight Flush`,
-      handScore: [9, straightResult.highCard]
-    };
-  }
-  
-  if (counts[0] === 4) {
-    return { 
-      rank: 8, 
-      name: 'Four of a Kind', 
-      usedCards: sorted,
-      description: 'Four of a Kind',
-      handScore: [8, ranksInOrder[0], ranksInOrder[1]]
-    };
-  }
-  
-  if (counts[0] === 3 && counts[1] === 2) {
-    return { 
-      rank: 7, 
-      name: 'Full House', 
-      usedCards: sorted,
-      description: 'Full House',
-      handScore: [7, ranksInOrder[0], ranksInOrder[1]]
-    };
-  }
-  
-  if (isFlush) {
-    return { 
-      rank: 6, 
-      name: 'Flush', 
-      usedCards: sorted,
-      description: `${sorted[0].rank}-high Flush`,
-      handScore: [6, ...ranksInOrder]
-    };
-  }
-  
-  if (isStraight) {
-    return { 
-      rank: 5, 
-      name: 'Straight', 
-      usedCards: sorted,
-      description: `${sorted[0].rank}-high Straight`,
-      handScore: [5, straightResult.highCard]
-    };
-  }
-  
-  if (counts[0] === 3) {
-    return { 
-      rank: 4, 
-      name: 'Three of a Kind', 
-      usedCards: sorted,
-      description: 'Three of a Kind',
-      handScore: [4, ...ranksInOrder]
-    };
-  }
-  
-  if (counts[0] === 2 && counts[1] === 2) {
-    return { 
-      rank: 3, 
-      name: 'Two Pair', 
-      usedCards: sorted,
-      description: 'Two Pair',
-      handScore: [3, ...ranksInOrder]
-    };
-  }
-  
-  if (counts[0] === 2) {
-    return { 
-      rank: 2, 
-      name: 'One Pair', 
-      usedCards: sorted,
-      description: 'One Pair',
-      handScore: [2, ...ranksInOrder]
-    };
-  }
-  
-  return { 
-    rank: 1, 
-    name: 'High Card', 
-    usedCards: sorted,
-    description: `${sorted[0].rank}-high`,
-    handScore: [1, ...ranksInOrder]
-  };
-}
+export function evaluateHoldemHand(
+  holeCards: Card[],
+  communityCards: Card[],
+): HandEvaluation {
+  const allCards = [...holeCards, ...communityCards];
+  const fiveCardCombos = combinations(allCards, 5);
 
-function checkStraight(sortedCards: Card[]): { isStraight: boolean; highCard: number } {
-  const values = sortedCards.map(c => rankValues[c.rank]);
-  
-  // Check A-2-3-4-5 (wheel)
-  if (values[0] === 14 && values[1] === 5 && values[2] === 4 && values[3] === 3 && values[4] === 2) {
-    return { isStraight: true, highCard: 5 };
-  }
-  
-  // Check regular straight
-  for (let i = 0; i < values.length - 1; i++) {
-    if (values[i] - values[i + 1] !== 1) {
-      return { isStraight: false, highCard: 0 };
+  let best: HandEvaluation | null = null;
+
+  for (const combo of fiveCardCombos) {
+    const evaluation = evaluateFiveCardHigh(combo);
+
+    if (!best || compareHighHands(evaluation, best) > 0) {
+      best = evaluation;
     }
   }
-  
-  return { isStraight: true, highCard: values[0] };
-}
 
-export function determineWinners(evaluations: Array<{ 
-  playerId: number; 
-  rank: number; 
-  usedCards: Card[];
-  handScore?: number[];
-}>): number[] {
-  if (evaluations.length === 0) return [];
-  
-  let bestEval = evaluations[0];
-  let winners = [evaluations[0].playerId];
-  
-  for (let i = 1; i < evaluations.length; i++) {
-    const current = evaluations[i];
-    const comparison = compareHands(
-      current.handScore || [current.rank], 
-      bestEval.handScore || [bestEval.rank]
-    );
-    
-    if (comparison > 0) {
-      bestEval = current;
-      winners = [current.playerId];
-    } else if (comparison === 0) {
-      winners.push(current.playerId);
-    }
+  if (!best) {
+    throw new Error("Unable to evaluate Hold'em hand.");
   }
-  
-  return winners;
+
+  return best;
 }
 
-export function evaluateLowHand(playerCards: Card[], communityCards: Card[]): {
-  hasLow: boolean;
-  lowScore?: number[];
-  usedCards?: Card[];
-} {
-  let bestLow: { hasLow: boolean; lowScore?: number[]; usedCards?: Card[] } = { hasLow: false };
-  
-  const holeCombos = getCombinations(playerCards, 2);
-  const boardCombos = getCombinations(communityCards, 3);
-  
+// ─────────────────────────────────────────────────────────────
+// Omaha / Big O High
+//
+// APT rule basis:
+// Exactly 2 hole cards + exactly 3 community cards.
+// Big O uses 5 hole cards.
+// ─────────────────────────────────────────────────────────────
+
+export interface OmahaHighEvaluation extends HandEvaluation {
+  usedCards: Card[];
+  usedBoardCards: Card[];
+  allBestHoleCardCombos: Card[][];
+}
+
+export function evaluateOmahaHigh(
+  holeCards: Card[],
+  communityCards: Card[],
+): OmahaHighEvaluation {
+  const holeCombos = combinations(holeCards, 2);
+  const boardCombos = combinations(communityCards, 3);
+
+  let best: OmahaHighEvaluation | null = null;
+  let allBestHoleCardCombos: Card[][] = [];
+
   for (const holeCombo of holeCombos) {
+    let bestForThisHoleCombo: HandEvaluation | null = null;
+    let bestBoardForThisHoleCombo: Card[] = [];
+
     for (const boardCombo of boardCombos) {
-      const fiveCards = [...holeCombo, ...boardCombo];
-      const lowEval = evaluateFiveCardsForLow(fiveCards);
-      
-      if (lowEval.hasLow) {
-        if (!bestLow.hasLow || compareLowHands(lowEval.lowScore!, bestLow.lowScore!) < 0) {
-          bestLow = lowEval;
-        }
+      const evaluation = evaluateFiveCardHigh([
+        ...holeCombo,
+        ...boardCombo,
+      ]);
+
+      if (
+        !bestForThisHoleCombo ||
+        compareHighHands(evaluation, bestForThisHoleCombo) > 0
+      ) {
+        bestForThisHoleCombo = evaluation;
+        bestBoardForThisHoleCombo = boardCombo;
+      }
+    }
+
+    if (!bestForThisHoleCombo) continue;
+
+    if (!best || compareHighHands(bestForThisHoleCombo, best) > 0) {
+      best = {
+        ...bestForThisHoleCombo,
+        usedCards: holeCombo,
+        usedBoardCards: bestBoardForThisHoleCombo,
+        allBestHoleCardCombos: [holeCombo],
+      };
+
+      allBestHoleCardCombos = [holeCombo];
+    } else if (compareHighHands(bestForThisHoleCombo, best) === 0) {
+      if (
+        !allBestHoleCardCombos.some((combo) =>
+          sameCardSet(combo, holeCombo),
+        )
+      ) {
+        allBestHoleCardCombos.push(holeCombo);
       }
     }
   }
-  
-  return bestLow;
+
+  if (!best) {
+    throw new Error("Unable to evaluate Omaha/Big O high hand.");
+  }
+
+  best.allBestHoleCardCombos = allBestHoleCardCombos;
+
+  return best;
 }
 
-function evaluateFiveCardsForLow(cards: Card[]): {
-  hasLow: boolean;
-  lowScore?: number[];
-  usedCards?: Card[];
+// ─────────────────────────────────────────────────────────────
+// Omaha / Big O Low
+//
+// Eight or Better
+// Ace-to-Five
+// Straights and flushes do not count against Low.
+// Five different ranks are required.
+// Compare highest card first; lower wins.
+// ─────────────────────────────────────────────────────────────
+
+export interface LowEvaluation {
+  qualifies: boolean;
+  values: number[];
+  name: string;
+  cards: Card[];
+  usedCards: Card[];
+  usedBoardCards: Card[];
+  allBestHoleCardCombos: Card[][];
+}
+
+function lowValue(card: Card): number {
+  if (card.rank === "A") return 1;
+  return RANK_VALUE[card.rank];
+}
+
+function evaluateFiveCardLow(cards: Card[]): {
+  qualifies: boolean;
+  values: number[];
+  name: string;
 } {
-  const lowValues = cards.map(c => {
-    const val = rankValues[c.rank];
-    // Ace counts as 1 for low
-    return val === 14 ? 1 : val;
-  });
-  
-  // All cards must be 8 or below
-  if (lowValues.some(v => v > 8)) {
-    return { hasLow: false };
+  const values = cards
+    .map(lowValue)
+    .sort((a, b) => b - a);
+
+  const unique = [...new Set(values)];
+
+  if (unique.length !== 5) {
+    return {
+      qualifies: false,
+      values: [],
+      name: "No Qualifying Low",
+    };
   }
-  
-  // Must have 5 different ranks (no pairs)
-  // This is the key rule - pairs, trips, etc. disqualify a low hand
-  const uniqueValues = new Set(lowValues);
-  if (uniqueValues.size !== 5) {
-    return { hasLow: false };
+
+  if (values[0] > 8) {
+    return {
+      qualifies: false,
+      values: [],
+      name: "No Qualifying Low",
+    };
   }
-  
-  // Sort from highest to lowest for comparison (lower is better)
-  const sortedValues = [...lowValues].sort((a, b) => b - a);
-  
-  // Note: Straights and flushes do NOT disqualify a low hand in Hi-Lo
-  // A-2-3-4-5 (wheel) is the best possible low hand even though it's a straight
-  // Flushes are also ignored for low hand qualification
-  
+
+  const display = values
+    .map((value) => (value === 1 ? "A" : String(value)))
+    .join("-");
+
   return {
-    hasLow: true,
-    lowScore: sortedValues,
-    usedCards: cards
+    qualifies: true,
+    values,
+    name: `${display} Low`,
   };
 }
 
-function compareLowHands(score1: number[], score2: number[]): number {
-  // Compare from highest card to lowest (scores are sorted high to low)
-  // Lower values are better for low hands
-  for (let i = 0; i < 5; i++) {
-    if (score1[i] < score2[i]) return -1; // score1 is better (lower)
-    if (score1[i] > score2[i]) return 1;  // score2 is better (lower)
-  }
-  return 0; // tie
-}
+export function compareLowHands(
+  a: LowEvaluation,
+  b: LowEvaluation,
+): number {
+  if (a.qualifies && !b.qualifies) return 1;
+  if (!a.qualifies && b.qualifies) return -1;
+  if (!a.qualifies && !b.qualifies) return 0;
 
-export function determineLowWinners(lowEvaluations: Array<{
-  playerId: number;
-  hasLow: boolean;
-  lowScore?: number[];
-  usedCards?: Card[];
-}>): number[] {
-  const validLows = lowEvaluations.filter(e => e.hasLow);
-  
-  if (validLows.length === 0) return [];
-  
-  let bestLow = validLows[0];
-  let winners = [validLows[0].playerId];
-  
-  for (let i = 1; i < validLows.length; i++) {
-    const current = validLows[i];
-    const comparison = compareLowHands(current.lowScore!, bestLow.lowScore!);
-    
-    if (comparison < 0) {
-      bestLow = current;
-      winners = [current.playerId];
-    } else if (comparison === 0) {
-      winners.push(current.playerId);
+  for (let i = 0; i < 5; i++) {
+    const av = a.values[i];
+    const bv = b.values[i];
+
+    if (av !== bv) {
+      // Lower card is the better Low.
+      return av < bv ? 1 : -1;
     }
   }
-  
+
+  return 0;
+}
+
+export function evaluateOmahaLow(
+  holeCards: Card[],
+  communityCards: Card[],
+): LowEvaluation {
+  const holeCombos = combinations(holeCards, 2);
+  const boardCombos = combinations(communityCards, 3);
+
+  let best: LowEvaluation | null = null;
+  let allBestHoleCardCombos: Card[][] = [];
+
+  for (const holeCombo of holeCombos) {
+    let bestForThisHoleCombo: LowEvaluation | null = null;
+
+    for (const boardCombo of boardCombos) {
+      const low = evaluateFiveCardLow([
+        ...holeCombo,
+        ...boardCombo,
+      ]);
+
+      if (!low.qualifies) continue;
+
+      const evaluation: LowEvaluation = {
+        qualifies: true,
+        values: low.values,
+        name: low.name,
+        cards: [...holeCombo, ...boardCombo],
+        usedCards: holeCombo,
+        usedBoardCards: boardCombo,
+        allBestHoleCardCombos: [holeCombo],
+      };
+
+      if (
+        !bestForThisHoleCombo ||
+        compareLowHands(evaluation, bestForThisHoleCombo) > 0
+      ) {
+        bestForThisHoleCombo = evaluation;
+      }
+    }
+
+    if (!bestForThisHoleCombo) continue;
+
+    if (!best || compareLowHands(bestForThisHoleCombo, best) > 0) {
+      best = bestForThisHoleCombo;
+      allBestHoleCardCombos = [holeCombo];
+    } else if (compareLowHands(bestForThisHoleCombo, best) === 0) {
+      if (
+        !allBestHoleCardCombos.some((combo) =>
+          sameCardSet(combo, holeCombo),
+        )
+      ) {
+        allBestHoleCardCombos.push(holeCombo);
+      }
+    }
+  }
+
+  if (!best) {
+    return {
+      qualifies: false,
+      values: [],
+      name: "No Qualifying Low",
+      cards: [],
+      usedCards: [],
+      usedBoardCards: [],
+      allBestHoleCardCombos: [],
+    };
+  }
+
+  best.allBestHoleCardCombos = allBestHoleCardCombos;
+
+  return best;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Winner helpers
+// ─────────────────────────────────────────────────────────────
+
+export function findHighWinners<T extends { high: HandEvaluation }>(
+  players: T[],
+): number[] {
+  if (players.length === 0) return [];
+
+  let winners = [0];
+
+  for (let i = 1; i < players.length; i++) {
+    const comparison = compareHighHands(
+      players[i].high,
+      players[winners[0]].high,
+    );
+
+    if (comparison > 0) {
+      winners = [i];
+    } else if (comparison === 0) {
+      winners.push(i);
+    }
+  }
+
   return winners;
+}
+
+export function findLowWinners<T extends { low: LowEvaluation }>(
+  players: T[],
+): number[] {
+  const qualifying = players
+    .map((player, index) => ({ player, index }))
+    .filter(({ player }) => player.low.qualifies);
+
+  if (qualifying.length === 0) return [];
+
+  let winners = [qualifying[0].index];
+
+  for (let i = 1; i < qualifying.length; i++) {
+    const candidateIndex = qualifying[i].index;
+
+    const comparison = compareLowHands(
+      players[candidateIndex].low,
+      players[winners[0]].low,
+    );
+
+    if (comparison > 0) {
+      winners = [candidateIndex];
+    } else if (comparison === 0) {
+      winners.push(candidateIndex);
+    }
+  }
+
+  return winners;
+}
+
+export function isValidBestHoleSelection(
+  selectedCards: Card[],
+  validCombos: Card[][],
+): boolean {
+  if (selectedCards.length !== 2) return false;
+
+  return validCombos.some((combo) =>
+    sameCardSet(combo, selectedCards),
+  );
 }
