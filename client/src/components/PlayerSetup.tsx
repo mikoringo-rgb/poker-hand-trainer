@@ -1,5 +1,3 @@
-// client/src/components/PlayerSetup.tsx
-
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
@@ -12,14 +10,14 @@ import {
 type GameMode = 'holdem' | 'omaha' | 'big-o';
 
 interface PlayerSetupProps {
-  onStartGame: (
+  onStart: (
     playerCount: number,
     gameMode: GameMode
   ) => void;
 }
 
 export default function PlayerSetup({
-  onStartGame,
+  onStart,
 }: PlayerSetupProps) {
   const [playerCount, setPlayerCount] = useState(4);
   const [gameMode, setGameMode] =
@@ -136,7 +134,7 @@ export default function PlayerSetup({
           <Button
             type="button"
             onClick={() =>
-              onStartGame(
+              onStart(
                 playerCount,
                 gameMode
               )
