@@ -1,3 +1,5 @@
+// client/src/components/GameBoard.tsx
+
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
@@ -25,7 +27,7 @@ import {
 import type { Card } from '@shared/schema';
 
 type GameMode = 'holdem' | 'omaha' | 'big-o';
-type BigOSelectionMode = 'high' | 'low';
+type BigOMode = 'high' | 'low';
 
 interface GameBoardProps {
   playerCount: number;
@@ -50,6 +52,8 @@ interface LowEvaluation {
   allBestHoleCardCombos?: Card[][];
 }
 
+type CardSelections = Record<number, Card[]>;
+
 interface BigOResult {
   overallCorrect: boolean;
 
@@ -63,34 +67,18 @@ interface BigOResult {
   actualLowWinners: number[];
 }
 
-type CardSelections = Record<number, Card[]>;
-
 function sameCard(a: Card, b: Card): boolean {
-  return (
-    a.rank === b.rank &&
-    a.suit === b.suit
-  );
+  return a.rank === b.rank && a.suit === b.suit;
 }
 
-function cardLabel(card: Card): string {
-  return `${card.rank}${card.suit}`;
+function includesCard(cards: Card[], card: Card): boolean {
+  return cards.some((item) => sameCard(item, card));
 }
 
-function pairLabel(cards: Card[]): string {
-  return cards.map(cardLabel).join(' ');
-}
+function sameNumberSet(a: number[], b: number[]): boolean {
+  if (a.length !== b.length) return false;
 
-function sameNumberSet(
-  first: number[],
-  second: number[],
-): boolean {
-  if (first.length !== second.length) {
-    return false;
-  }
-
-  return first.every((value) =>
-    second.includes(value),
-  );
+  return a.every((value) => b.includes(value));
 }
 
 export default function GameBoard({
@@ -109,28 +97,15 @@ export default function GameBoard({
     useState<number[]>([]);
 
   // Big O
-  const [
-    activeBigOMode,
-    setActiveBigOMode,
-  ] = useState<BigOSelectionMode>('high');
+  const [activeBigOMode, setActiveBigOMode] =
+    useState<BigOMode>('high');
 
-  const [
-    selectedHighCards,
-    setSelectedHighCards,
-  ] = useState<CardSelections>({});
+  const [selectedHighCards, setSelectedHighCards] =
+    useState<CardSelections>({});
 
-  const [
-    selectedLowCards,
-    setSelectedLowCards,
-  ] = useState<CardSelections>({});
+  const [selectedLowCards, setSelectedLowCards] =
+    useState<CardSelections>({});
 
-  /**
-   * Empty Low selection must be distinguishable from
-   * "I forgot to examine Low".
-   *
-   * Once LOW has been opened, zero selected cards means
-   * the user's answer is "No qualifying Low".
-   */
   const [lowTouched, setLowTouched] =
     useState(false);
 
@@ -140,14 +115,14 @@ export default function GameBoard({
   const [showResult, setShowResult] =
     useState(false);
 
+  const [bigOResult, setBigOResult] =
+    useState<BigOResult | null>(null);
+
   const [feedback, setFeedback] = useState<{
     isCorrect: boolean;
     message: string;
     time?: number;
   } | null>(null);
-
-  const [bigOResult, setBigOResult] =
-    useState<BigOResult | null>(null);
 
   const [timerRunning, setTimerRunning] =
     useState(false);
@@ -161,11 +136,14 @@ export default function GameBoard({
   const [lowEvaluations, setLowEvaluations] =
     useState<LowEvaluation[]>([]);
 
+  // ─────────────────────────────────────────────
+  // Deal
+  // ─────────────────────────────────────────────
+
   const dealCards = () => {
     const deck = createDeck();
 
     const hands: Card[][] = [];
-
     let cardIndex = 0;
 
     const cardsPerPlayer =
@@ -183,9 +161,9 @@ export default function GameBoard({
       const hand: Card[] = [];
 
       for (
-        let cardNumber = 0;
-        cardNumber < cardsPerPlayer;
-        cardNumber++
+        let i = 0;
+        i < cardsPerPlayer;
+        i++
       ) {
         hand.push(deck[cardIndex++]);
       }
@@ -210,10 +188,9 @@ export default function GameBoard({
     setLowTouched(false);
 
     setValidationMessage('');
-
     setShowResult(false);
-    setFeedback(null);
     setBigOResult(null);
+    setFeedback(null);
 
     setCurrentTime(0);
     setTimerRunning(true);
@@ -251,7 +228,7 @@ export default function GameBoard({
     if (gameMode === 'big-o') {
       const lows: LowEvaluation[] =
         hands.map((hand, index) => {
-          const lowEvaluation =
+          const evaluation =
             evaluateLowHand(
               hand,
               board,
@@ -259,7 +236,7 @@ export default function GameBoard({
 
           return {
             playerId: index + 1,
-            ...lowEvaluation,
+            ...evaluation,
           };
         });
 
@@ -274,9 +251,9 @@ export default function GameBoard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playerCount, gameMode]);
 
-  // ───────────────────────────────────────────
+  // ─────────────────────────────────────────────
   // Hold'em / Omaha
-  // ───────────────────────────────────────────
+  // ─────────────────────────────────────────────
 
   const handleSelectWinner = (
     playerId: number,
@@ -304,29 +281,12 @@ export default function GameBoard({
     });
   };
 
-  // ───────────────────────────────────────────
-  // Big O card selection
-  // ───────────────────────────────────────────
-
-  const getSelection = (
-    mode: BigOSelectionMode,
-    playerId: number,
-  ): Card[] => {
-    if (mode === 'high') {
-      return (
-        selectedHighCards[playerId] ||
-        []
-      );
-    }
-
-    return (
-      selectedLowCards[playerId] ||
-      []
-    );
-  };
+  // ─────────────────────────────────────────────
+  // Big O selection
+  // ─────────────────────────────────────────────
 
   const updateSelection = (
-    mode: BigOSelectionMode,
+    mode: BigOMode,
     playerId: number,
     card: Card,
   ) => {
@@ -342,11 +302,9 @@ export default function GameBoard({
         previous[playerId] || [];
 
       const alreadySelected =
-        current.some((selectedCard) =>
-          sameCard(
-            selectedCard,
-            card,
-          ),
+        includesCard(
+          current,
+          card,
         );
 
       if (alreadySelected) {
@@ -354,21 +312,15 @@ export default function GameBoard({
           ...previous,
           [playerId]:
             current.filter(
-              (selectedCard) =>
+              (selected) =>
                 !sameCard(
-                  selectedCard,
+                  selected,
                   card,
                 ),
             ),
         };
       }
 
-      /**
-       * A Big O hand must use exactly
-       * two Hole Cards.
-       *
-       * Do not allow a third card.
-       */
       if (current.length >= 2) {
         return previous;
       }
@@ -385,24 +337,16 @@ export default function GameBoard({
     setValidationMessage('');
   };
 
-  const handleBigOCardClick = (
-    playerId: number,
-    card: Card,
-  ) => {
-    updateSelection(
-      activeBigOMode,
-      playerId,
-      card,
-    );
-  };
-
   const changeBigOMode = (
-    mode: BigOSelectionMode,
+    mode: BigOMode,
   ) => {
     setActiveBigOMode(mode);
     setValidationMessage('');
 
-    if (mode === 'low') {
+    if (
+      mode === 'low' &&
+      !showResult
+    ) {
       setLowTouched(true);
     }
   };
@@ -452,12 +396,9 @@ export default function GameBoard({
           return false;
         }
 
-        const selected =
-          selections[playerId] ||
-          [];
-
         return isValidBestHoleSelection(
-          selected,
+          selections[playerId] ||
+            [],
           evaluation
             .allBestHoleCardCombos,
         );
@@ -465,9 +406,133 @@ export default function GameBoard({
     );
   };
 
-  // ───────────────────────────────────────────
+  // ─────────────────────────────────────────────
+  // Result helpers
+  // ─────────────────────────────────────────────
+
+  const getCorrectPair = (
+    playerId: number,
+    mode: BigOMode,
+  ): Card[] => {
+    const evaluationList =
+      mode === 'high'
+        ? evaluations
+        : lowEvaluations;
+
+    const evaluation =
+      evaluationList.find(
+        (item) =>
+          item.playerId ===
+          playerId,
+      );
+
+    const combos =
+      evaluation
+        ?.allBestHoleCardCombos ||
+      [];
+
+    if (combos.length === 0) {
+      return [];
+    }
+
+    const userSelection =
+      mode === 'high'
+        ? selectedHighCards[
+            playerId
+          ] || []
+        : selectedLowCards[
+            playerId
+          ] || [];
+
+    /*
+     * If the user's selected pair is one of
+     * multiple equivalent optimal pairs,
+     * use that pair for result highlighting.
+     */
+    const selectedIsValid =
+      isValidBestHoleSelection(
+        userSelection,
+        combos,
+      );
+
+    if (selectedIsValid) {
+      return userSelection;
+    }
+
+    return combos[0];
+  };
+
+  const getCardResultClass = (
+    playerId: number,
+    card: Card,
+  ): string => {
+    if (!showResult) {
+      return '';
+    }
+
+    const mode =
+      activeBigOMode;
+
+    const userSelections =
+      mode === 'high'
+        ? selectedHighCards
+        : selectedLowCards;
+
+    const actualWinners =
+      mode === 'high'
+        ? bigOResult
+            ?.actualHighWinners ||
+          []
+        : bigOResult
+            ?.actualLowWinners ||
+          [];
+
+    const userPair =
+      userSelections[
+        playerId
+      ] || [];
+
+    const correctPair =
+      actualWinners.includes(
+        playerId,
+      )
+        ? getCorrectPair(
+            playerId,
+            mode,
+          )
+        : [];
+
+    const userSelected =
+      includesCard(
+        userPair,
+        card,
+      );
+
+    const correctSelected =
+      includesCard(
+        correctPair,
+        card,
+      );
+
+    if (
+      correctSelected
+    ) {
+      return '!ring-4 !ring-green-500 !border-green-500 !bg-green-50';
+    }
+
+    if (
+      userSelected &&
+      !correctSelected
+    ) {
+      return '!ring-4 !ring-red-500 !border-red-500 !bg-red-50';
+    }
+
+    return '';
+  };
+
+  // ─────────────────────────────────────────────
   // Submit
-  // ───────────────────────────────────────────
+  // ─────────────────────────────────────────────
 
   const handleSubmit = () => {
     if (gameMode === 'big-o') {
@@ -496,7 +561,8 @@ export default function GameBoard({
       }
 
       if (
-        userHighWinners.length === 0
+        userHighWinners.length ===
+        0
       ) {
         setValidationMessage(
           'HIGH 至少要選一位玩家的 2 張 Hole Cards。',
@@ -506,13 +572,12 @@ export default function GameBoard({
 
       if (!lowTouched) {
         setValidationMessage(
-          '請先切到 LOW 完成 Low 判定；若無 Low，保持零張即可。',
+          '請先檢查 LOW；若沒有 qualifying Low，切到 LOW 後保持不選牌即可。',
         );
         return;
       }
 
       setTimerRunning(false);
-      setShowResult(true);
 
       const actualHighWinners =
         determineWinners(
@@ -536,10 +601,6 @@ export default function GameBoard({
           actualLowWinners,
         );
 
-      /**
-       * Used Cards is scored independently
-       * from winner recognition.
-       */
       const highUsedCardsCorrect =
         highWinnerCorrect &&
         validateUsedCards(
@@ -549,19 +610,16 @@ export default function GameBoard({
         );
 
       const lowUsedCardsCorrect =
-        actualLowWinners.length === 0
-          ? (
-              lowWinnerCorrect &&
-              userLowWinners.length ===
-                0
-            )
-          : (
-              lowWinnerCorrect &&
-              validateUsedCards(
-                actualLowWinners,
-                selectedLowCards,
-                lowEvaluations,
-              )
+        actualLowWinners.length ===
+        0
+          ? lowWinnerCorrect &&
+            userLowWinners.length ===
+              0
+          : lowWinnerCorrect &&
+            validateUsedCards(
+              actualLowWinners,
+              selectedLowCards,
+              lowEvaluations,
             );
 
       const overallCorrect =
@@ -570,7 +628,7 @@ export default function GameBoard({
         lowWinnerCorrect &&
         lowUsedCardsCorrect;
 
-      const result: BigOResult = {
+      setBigOResult({
         overallCorrect,
 
         highWinnerCorrect,
@@ -581,9 +639,16 @@ export default function GameBoard({
 
         actualHighWinners,
         actualLowWinners,
-      };
+      });
 
-      setBigOResult(result);
+      setShowResult(true);
+
+      /*
+       * Result initially opens HIGH,
+       * so the user can review the hand
+       * without losing the original table.
+       */
+      setActiveBigOMode('high');
 
       return;
     }
@@ -625,39 +690,9 @@ export default function GameBoard({
         )
       : [];
 
-  // ───────────────────────────────────────────
-  // Big O result helpers
-  // ───────────────────────────────────────────
-
-  const formatBestCombos = (
-    playerId: number,
-    evaluationList:
-      | HighEvaluation[]
-      | LowEvaluation[],
-  ): string => {
-    const evaluation =
-      evaluationList.find(
-        (item) =>
-          item.playerId === playerId,
-      );
-
-    const combos =
-      evaluation
-        ?.allBestHoleCardCombos ||
-      [];
-
-    if (combos.length === 0) {
-      return '—';
-    }
-
-    return combos
-      .map(pairLabel)
-      .join(' / ');
-  };
-
-  // ───────────────────────────────────────────
-  // Big O V2 screen
-  // ───────────────────────────────────────────
+  // ─────────────────────────────────────────────
+  // BIG O
+  // ─────────────────────────────────────────────
 
   if (gameMode === 'big-o') {
     const lowSelectionCount =
@@ -665,13 +700,27 @@ export default function GameBoard({
         selectedLowCards,
       ).length;
 
+    const currentWinnerCorrect =
+      activeBigOMode === 'high'
+        ? bigOResult
+            ?.highWinnerCorrect
+        : bigOResult
+            ?.lowWinnerCorrect;
+
+    const currentCardsCorrect =
+      activeBigOMode === 'high'
+        ? bigOResult
+            ?.highUsedCardsCorrect
+        : bigOResult
+            ?.lowUsedCardsCorrect;
+
     return (
       <div className="h-[100dvh] overflow-hidden bg-black text-white relative">
         <div className="absolute inset-0 bg-gradient-to-br from-neutral-950 via-black to-neutral-950" />
 
         <div className="relative z-10 h-full flex flex-col px-2 pt-[max(6px,env(safe-area-inset-top))] pb-[max(6px,env(safe-area-inset-bottom))]">
 
-          {/* Top control */}
+          {/* HIGH / LOW */}
           <div className="flex items-center gap-2 shrink-0">
             <Button
               data-testid="button-back"
@@ -699,6 +748,15 @@ export default function GameBoard({
                 }
               >
                 HIGH
+                {showResult &&
+                  bigOResult && (
+                    <span className="ml-2">
+                      {bigOResult.highWinnerCorrect &&
+                      bigOResult.highUsedCardsCorrect
+                        ? '✓'
+                        : '✕'}
+                    </span>
+                  )}
               </Button>
 
               <Button
@@ -716,20 +774,29 @@ export default function GameBoard({
                 }
               >
                 LOW
-                {lowTouched &&
-                  lowSelectionCount ===
-                    0 &&
-                  !showResult && (
-                    <span className="ml-1 text-[10px] opacity-75">
-                      NO LOW
+
+                {showResult &&
+                  bigOResult ? (
+                    <span className="ml-2">
+                      {bigOResult.lowWinnerCorrect &&
+                      bigOResult.lowUsedCardsCorrect
+                        ? '✓'
+                        : '✕'}
                     </span>
+                  ) : (
+                    lowTouched &&
+                    lowSelectionCount ===
+                      0 && (
+                      <span className="ml-1 text-[10px] opacity-70">
+                        NO LOW
+                      </span>
+                    )
                   )}
               </Button>
             </div>
 
             {showResult ? (
               <Button
-                data-testid="button-new-game"
                 onClick={dealCards}
                 size="icon"
                 variant="secondary"
@@ -742,7 +809,7 @@ export default function GameBoard({
             )}
           </div>
 
-          {/* Timer */}
+          {/* TIMER */}
           {!showResult && (
             <div className="flex justify-center shrink-0 py-1">
               <Timer
@@ -759,283 +826,208 @@ export default function GameBoard({
             </div>
           )}
 
-          {/* Main hand-reading area */}
-          <div className="flex-1 min-h-0 flex flex-col justify-center gap-[clamp(3px,0.7dvh,7px)]">
+          {/* RESULT SUMMARY */}
+          {showResult &&
+            bigOResult && (
+              <div className="shrink-0 pt-1.5 pb-1 text-center">
+                <div
+                  className={
+                    bigOResult.overallCorrect
+                      ? 'text-green-400 text-sm font-semibold'
+                      : 'text-red-400 text-sm font-semibold'
+                  }
+                >
+                  {bigOResult.overallCorrect
+                    ? 'Correct'
+                    : 'Incorrect'}
+                  <span className="text-white/40 font-normal ml-2">
+                    {currentTime.toFixed(
+                      1,
+                    )}
+                    s
+                  </span>
+                </div>
 
-            {playerHands.map(
-              (hand, index) => {
-                const playerId =
-                  index + 1;
+                <div className="text-[10px] text-white/60 mt-0.5">
+                  {activeBigOMode ===
+                  'high'
+                    ? 'HIGH'
+                    : 'LOW'}
+                  {' · Winner '}
+                  {currentWinnerCorrect
+                    ? '✓'
+                    : '✕'}
+                  {' · Used Cards '}
+                  {currentCardsCorrect
+                    ? '✓'
+                    : '✕'}
+                </div>
 
-                const highSelection =
-                  selectedHighCards[
-                    playerId
-                  ] || [];
-
-                const lowSelection =
-                  selectedLowCards[
-                    playerId
-                  ] || [];
-
-                return (
-                  <div
-                    key={
-                      playerId
-                    }
-                    className="flex items-center gap-1.5 min-h-0"
-                  >
-                    <div className="w-7 shrink-0 text-center text-[11px] text-white/65">
-                      P
-                      {
-                        playerId
-                      }
-                    </div>
-
-                    <div className="flex flex-1 justify-center gap-[clamp(2px,1vw,5px)]">
-                      {hand.map(
-                        (
-                          card,
-                          cardIndex,
-                        ) => (
-                          <PlayingCard
-                            key={`${playerId}-${cardIndex}`}
-                            card={
-                              card
-                            }
-                            size="compact"
-                            clickable={
-                              !showResult
-                            }
-                            onClick={() =>
-                              handleBigOCardClick(
-                                playerId,
-                                card,
-                              )
-                            }
-                            selectedHigh={highSelection.some(
-                              (
-                                selectedCard,
-                              ) =>
-                                sameCard(
-                                  selectedCard,
-                                  card,
-                                ),
-                            )}
-                            selectedLow={lowSelection.some(
-                              (
-                                selectedCard,
-                              ) =>
-                                sameCard(
-                                  selectedCard,
-                                  card,
-                                ),
-                            )}
-                          />
-                        ),
-                      )}
-                    </div>
-                  </div>
-                );
-              },
+                <div className="text-[9px] text-white/40 mt-0.5">
+                  綠框＝正確使用牌　紅框＝妳選錯的牌
+                </div>
+              </div>
             )}
 
-            {/* Board */}
-            <div className="flex items-center gap-1.5 border-t border-white/10 pt-[clamp(4px,0.8dvh,8px)]">
-              <div className="w-7 shrink-0 text-center text-[9px] text-white/50">
-                BD
-              </div>
+          {/* HANDS */}
+          <div className="flex-1 min-h-0 flex flex-col justify-center">
 
-              <div className="flex flex-1 justify-center gap-[clamp(2px,1vw,5px)]">
-                {communityCards.map(
-                  (
-                    card,
-                    index,
-                  ) => (
-                    <PlayingCard
-                      key={`board-${index}`}
-                      card={
-                        card
-                      }
-                      size="compact"
-                    />
-                  ),
-                )}
+            <div className="flex flex-col gap-[clamp(7px,1.25dvh,12px)]">
+              {playerHands.map(
+                (hand, index) => {
+                  const playerId =
+                    index + 1;
+
+                  const highSelection =
+                    selectedHighCards[
+                      playerId
+                    ] || [];
+
+                  const lowSelection =
+                    selectedLowCards[
+                      playerId
+                    ] || [];
+
+                  return (
+                    <div
+                      key={playerId}
+                      className="flex items-center gap-2"
+                    >
+                      <div className="w-10 shrink-0 text-center text-[11px] text-white/60">
+                        P{playerId}
+                      </div>
+
+                      <div className="flex flex-1 justify-center gap-[clamp(3px,1vw,6px)]">
+                        {hand.map(
+                          (
+                            card,
+                            cardIndex,
+                          ) => (
+                            <PlayingCard
+                              key={`${playerId}-${cardIndex}`}
+                              card={
+                                card
+                              }
+                              size="compact"
+                              clickable={
+                                !showResult
+                              }
+                              onClick={() =>
+                                updateSelection(
+                                  activeBigOMode,
+                                  playerId,
+                                  card,
+                                )
+                              }
+                              selectedHigh={
+                                !showResult &&
+                                highSelection.some(
+                                  (
+                                    selected,
+                                  ) =>
+                                    sameCard(
+                                      selected,
+                                      card,
+                                    ),
+                                )
+                              }
+                              selectedLow={
+                                !showResult &&
+                                lowSelection.some(
+                                  (
+                                    selected,
+                                  ) =>
+                                    sameCard(
+                                      selected,
+                                      card,
+                                    ),
+                                )
+                              }
+                              className={
+                                getCardResultClass(
+                                  playerId,
+                                  card,
+                                )
+                              }
+                            />
+                          ),
+                        )}
+                      </div>
+                    </div>
+                  );
+                },
+              )}
+            </div>
+
+            {/* BOARD SEPARATION */}
+            <div className="h-[clamp(14px,2.2dvh,24px)] shrink-0" />
+
+            {/* BOARD */}
+            <div className="border-t border-white/20 pt-[clamp(9px,1.4dvh,14px)]">
+              <div className="flex items-center gap-2">
+                <div className="w-10 shrink-0 text-center text-[9px] font-semibold tracking-wide text-white/65">
+                  BOARD
+                </div>
+
+                <div className="flex flex-1 justify-center gap-[clamp(3px,1vw,6px)]">
+                  {communityCards.map(
+                    (
+                      card,
+                      index,
+                    ) => (
+                      <PlayingCard
+                        key={`board-${index}`}
+                        card={
+                          card
+                        }
+                        size="compact"
+                        className="!w-[clamp(46px,12vw,60px)] !h-[clamp(52px,8dvh,68px)]"
+                      />
+                    ),
+                  )}
+                </div>
               </div>
             </div>
           </div>
 
-          {validationMessage && !showResult && (
-            <div className="shrink-0 text-center text-[11px] text-red-400 py-1">
-              {validationMessage}
-            </div>
-          )}
+          {/* VALIDATION */}
+          {validationMessage &&
+            !showResult && (
+              <div className="shrink-0 text-center text-[11px] text-red-400 py-1">
+                {validationMessage}
+              </div>
+            )}
 
-          {/* Submit */}
-          {!showResult && (
+          {/* BOTTOM */}
+          {!showResult ? (
             <Button
               type="button"
               data-testid="button-submit"
               onClick={
                 handleSubmit
               }
-              className="shrink-0 h-10 w-full bg-white text-black hover:bg-white/90 font-semibold"
+              className="shrink-0 h-11 w-full bg-white text-black hover:bg-white/90 font-semibold"
             >
               <Check className="w-4 h-4 mr-2" />
               SUBMIT
             </Button>
+          ) : (
+            <Button
+              type="button"
+              onClick={dealCards}
+              className="shrink-0 h-11 w-full bg-green-600 hover:bg-green-700 text-white font-semibold"
+            >
+              NEXT HAND
+            </Button>
           )}
         </div>
-
-        {/* Result overlay */}
-        {showResult &&
-          bigOResult && (
-            <div className="absolute inset-0 z-40 bg-black/75 backdrop-blur-sm flex items-end">
-              <div className="w-full max-h-[78dvh] overflow-y-auto rounded-t-2xl bg-neutral-950 border-t border-white/15 px-4 pt-4 pb-[max(16px,env(safe-area-inset-bottom))]">
-                <div className="text-center mb-3">
-                  <div
-                    className={
-                      bigOResult.overallCorrect
-                        ? 'text-green-400 text-lg font-semibold'
-                        : 'text-red-400 text-lg font-semibold'
-                    }
-                  >
-                    {bigOResult.overallCorrect
-                      ? 'Correct'
-                      : 'Incorrect'}
-                  </div>
-
-                  <div className="text-xs text-white/50 mt-1">
-                    {currentTime.toFixed(
-                      1,
-                    )}
-                    s
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2 text-xs mb-4">
-                  <div className="rounded-lg bg-white/5 p-2">
-                    High Winner{' '}
-                    {bigOResult.highWinnerCorrect
-                      ? '✅'
-                      : '❌'}
-                  </div>
-
-                  <div className="rounded-lg bg-white/5 p-2">
-                    High Used Cards{' '}
-                    {bigOResult.highUsedCardsCorrect
-                      ? '✅'
-                      : '❌'}
-                  </div>
-
-                  <div className="rounded-lg bg-white/5 p-2">
-                    Low Winner{' '}
-                    {bigOResult.lowWinnerCorrect
-                      ? '✅'
-                      : '❌'}
-                  </div>
-
-                  <div className="rounded-lg bg-white/5 p-2">
-                    Low Used Cards{' '}
-                    {bigOResult.lowUsedCardsCorrect
-                      ? '✅'
-                      : '❌'}
-                  </div>
-                </div>
-
-                <div className="space-y-3 text-sm">
-                  <div>
-                    <div className="text-yellow-400 text-xs tracking-wider mb-1">
-                      HIGH
-                    </div>
-
-                    {bigOResult.actualHighWinners.map(
-                      (
-                        playerId,
-                      ) => (
-                        <div
-                          key={`high-result-${playerId}`}
-                          className="text-white/90"
-                        >
-                          P
-                          {
-                            playerId
-                          }
-                          {' — '}
-                          {formatBestCombos(
-                            playerId,
-                            evaluations,
-                          )}
-                        </div>
-                      ),
-                    )}
-                  </div>
-
-                  <div>
-                    <div className="text-blue-400 text-xs tracking-wider mb-1">
-                      LOW
-                    </div>
-
-                    {bigOResult.actualLowWinners.length ===
-                    0 ? (
-                      <div className="text-white/70">
-                        No Qualifying
-                        Low
-                      </div>
-                    ) : (
-                      bigOResult.actualLowWinners.map(
-                        (
-                          playerId,
-                        ) => (
-                          <div
-                            key={`low-result-${playerId}`}
-                            className="text-white/90"
-                          >
-                            P
-                            {
-                              playerId
-                            }
-                            {' — '}
-                            {formatBestCombos(
-                              playerId,
-                              lowEvaluations,
-                            )}
-                          </div>
-                        ),
-                      )
-                    )}
-                  </div>
-                </div>
-
-                <Button
-                  type="button"
-                  onClick={
-                    dealCards
-                  }
-                  className="w-full mt-5"
-                >
-                  NEXT HAND
-                </Button>
-
-                <Button
-                  type="button"
-                  onClick={
-                    onBack
-                  }
-                  variant="ghost"
-                  className="w-full mt-1 text-white/60"
-                >
-                  Back
-                </Button>
-              </div>
-            </div>
-          )}
       </div>
     );
   }
 
-  // ───────────────────────────────────────────
-  // Original Hold'em / Omaha screen
-  // ───────────────────────────────────────────
+  // ─────────────────────────────────────────────
+  // EXISTING HOLD'EM / OMAHA
+  // ─────────────────────────────────────────────
 
   return (
     <div className="min-h-screen bg-black relative">
