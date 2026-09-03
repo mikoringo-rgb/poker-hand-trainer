@@ -106,9 +106,6 @@ export default function GameBoard({
   const [selectedLowCards, setSelectedLowCards] =
     useState<CardSelections>({});
 
-  const [lowTouched, setLowTouched] =
-    useState(false);
-
   const [validationMessage, setValidationMessage] =
     useState('');
 
@@ -185,7 +182,6 @@ export default function GameBoard({
     setSelectedLowCards({});
 
     setActiveBigOMode('high');
-    setLowTouched(false);
 
     setValidationMessage('');
     setShowResult(false);
@@ -342,13 +338,6 @@ export default function GameBoard({
   ) => {
     setActiveBigOMode(mode);
     setValidationMessage('');
-
-    if (
-      mode === 'low' &&
-      !showResult
-    ) {
-      setLowTouched(true);
-    }
   };
 
   const selectedWinnerIds = (
@@ -444,11 +433,6 @@ export default function GameBoard({
             playerId
           ] || [];
 
-    /*
-     * If the user's selected pair is one of
-     * multiple equivalent optimal pairs,
-     * use that pair for result highlighting.
-     */
     const selectedIsValid =
       isValidBestHoleSelection(
         userSelection,
@@ -570,13 +554,6 @@ export default function GameBoard({
         return;
       }
 
-      if (!lowTouched) {
-        setValidationMessage(
-          '請先檢查 LOW；若沒有 qualifying Low，切到 LOW 後保持不選牌即可。',
-        );
-        return;
-      }
-
       setTimerRunning(false);
 
       const actualHighWinners =
@@ -642,12 +619,6 @@ export default function GameBoard({
       });
 
       setShowResult(true);
-
-      /*
-       * Result initially opens HIGH,
-       * so the user can review the hand
-       * without losing the original table.
-       */
       setActiveBigOMode('high');
 
       return;
@@ -695,27 +666,20 @@ export default function GameBoard({
   // ─────────────────────────────────────────────
 
   if (gameMode === 'big-o') {
-    const lowSelectionCount =
-      selectedWinnerIds(
-        selectedLowCards,
-      ).length;
+    const highCorrect =
+      Boolean(
+        bigOResult?.highWinnerCorrect &&
+        bigOResult?.highUsedCardsCorrect,
+      );
 
-    const currentWinnerCorrect =
-      activeBigOMode === 'high'
-        ? bigOResult
-            ?.highWinnerCorrect
-        : bigOResult
-            ?.lowWinnerCorrect;
-
-    const currentCardsCorrect =
-      activeBigOMode === 'high'
-        ? bigOResult
-            ?.highUsedCardsCorrect
-        : bigOResult
-            ?.lowUsedCardsCorrect;
+    const lowCorrect =
+      Boolean(
+        bigOResult?.lowWinnerCorrect &&
+        bigOResult?.lowUsedCardsCorrect,
+      );
 
     return (
-      <div className="h-[100dvh] overflow-hidden bg-black text-white relative">
+      <div className="h-[100svh] overflow-hidden bg-black text-white relative">
         <div className="absolute inset-0 bg-gradient-to-br from-neutral-950 via-black to-neutral-950" />
 
         <div className="relative z-10 h-full flex flex-col px-2 pt-[max(6px,env(safe-area-inset-top))] pb-[max(6px,env(safe-area-inset-bottom))]">
@@ -776,21 +740,13 @@ export default function GameBoard({
                 LOW
 
                 {showResult &&
-                  bigOResult ? (
+                  bigOResult && (
                     <span className="ml-2">
                       {bigOResult.lowWinnerCorrect &&
                       bigOResult.lowUsedCardsCorrect
                         ? '✓'
                         : '✕'}
                     </span>
-                  ) : (
-                    lowTouched &&
-                    lowSelectionCount ===
-                      0 && (
-                      <span className="ml-1 text-[10px] opacity-70">
-                        NO LOW
-                      </span>
-                    )
                   )}
               </Button>
             </div>
@@ -829,42 +785,128 @@ export default function GameBoard({
           {/* RESULT SUMMARY */}
           {showResult &&
             bigOResult && (
-              <div className="shrink-0 pt-1.5 pb-1 text-center">
-                <div
-                  className={
-                    bigOResult.overallCorrect
-                      ? 'text-green-400 text-sm font-semibold'
-                      : 'text-red-400 text-sm font-semibold'
-                  }
-                >
-                  {bigOResult.overallCorrect
-                    ? 'Correct'
-                    : 'Incorrect'}
-                  <span className="text-white/40 font-normal ml-2">
+              <div className="shrink-0 pt-1 pb-1">
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setActiveBigOMode(
+                        'high',
+                      )
+                    }
+                    className={[
+                      'rounded-lg border-2 px-2 py-1.5 text-left',
+                      highCorrect
+                        ? 'bg-green-950/80 border-green-500'
+                        : 'bg-red-950/80 border-red-500',
+                      activeBigOMode ===
+                      'high'
+                        ? 'ring-2 ring-white/40'
+                        : '',
+                    ].join(' ')}
+                  >
+                    <div
+                      className={[
+                        'text-sm font-bold',
+                        highCorrect
+                          ? 'text-green-300'
+                          : 'text-red-300',
+                      ].join(' ')}
+                    >
+                      HIGH{' '}
+                      {highCorrect
+                        ? '✓'
+                        : '✕'}
+                    </div>
+
+                    <div className="mt-0.5 text-[10px] text-white/90">
+                      Winner{' '}
+                      {bigOResult.highWinnerCorrect
+                        ? '✓'
+                        : '✕'}
+
+                      <span className="mx-1 text-white/30">
+                        |
+                      </span>
+
+                      Used{' '}
+                      {bigOResult.highUsedCardsCorrect
+                        ? '✓'
+                        : '✕'}
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setActiveBigOMode(
+                        'low',
+                      )
+                    }
+                    className={[
+                      'rounded-lg border-2 px-2 py-1.5 text-left',
+                      lowCorrect
+                        ? 'bg-green-950/80 border-green-500'
+                        : 'bg-red-950/80 border-red-500',
+                      activeBigOMode ===
+                      'low'
+                        ? 'ring-2 ring-white/40'
+                        : '',
+                    ].join(' ')}
+                  >
+                    <div
+                      className={[
+                        'text-sm font-bold',
+                        lowCorrect
+                          ? 'text-green-300'
+                          : 'text-red-300',
+                      ].join(' ')}
+                    >
+                      LOW{' '}
+                      {lowCorrect
+                        ? '✓'
+                        : '✕'}
+                    </div>
+
+                    <div className="mt-0.5 text-[10px] text-white/90">
+                      Winner{' '}
+                      {bigOResult.lowWinnerCorrect
+                        ? '✓'
+                        : '✕'}
+
+                      <span className="mx-1 text-white/30">
+                        |
+                      </span>
+
+                      Used{' '}
+                      {bigOResult.lowUsedCardsCorrect
+                        ? '✓'
+                        : '✕'}
+                    </div>
+                  </button>
+                </div>
+
+                <div className="mt-1 flex items-center justify-between px-1 text-[10px]">
+                  <div>
+                    <span className="text-green-400">
+                      綠框＝正確
+                    </span>
+
+                    <span className="mx-2 text-white/25">
+                      |
+                    </span>
+
+                    <span className="text-red-400">
+                      紅框＝妳選錯
+                    </span>
+                  </div>
+
+                  <div className="text-white/45">
                     {currentTime.toFixed(
                       1,
                     )}
                     s
-                  </span>
-                </div>
-
-                <div className="text-[10px] text-white/60 mt-0.5">
-                  {activeBigOMode ===
-                  'high'
-                    ? 'HIGH'
-                    : 'LOW'}
-                  {' · Winner '}
-                  {currentWinnerCorrect
-                    ? '✓'
-                    : '✕'}
-                  {' · Used Cards '}
-                  {currentCardsCorrect
-                    ? '✓'
-                    : '✕'}
-                </div>
-
-                <div className="text-[9px] text-white/40 mt-0.5">
-                  綠框＝正確使用牌　紅框＝妳選錯的牌
+                  </div>
                 </div>
               </div>
             )}
@@ -872,7 +914,7 @@ export default function GameBoard({
           {/* HANDS */}
           <div className="flex-1 min-h-0 flex flex-col justify-center">
 
-            <div className="flex flex-col gap-[clamp(7px,1.25dvh,12px)]">
+            <div className="flex flex-col gap-[clamp(6px,1.05svh,10px)]">
               {playerHands.map(
                 (hand, index) => {
                   const playerId =
@@ -960,10 +1002,10 @@ export default function GameBoard({
             </div>
 
             {/* BOARD SEPARATION */}
-            <div className="h-[clamp(14px,2.2dvh,24px)] shrink-0" />
+            <div className="h-[clamp(10px,1.6svh,18px)] shrink-0" />
 
             {/* BOARD */}
-            <div className="border-t border-white/20 pt-[clamp(9px,1.4dvh,14px)]">
+            <div className="border-t border-white/20 pt-[clamp(7px,1.05svh,11px)]">
               <div className="flex items-center gap-2">
                 <div className="w-10 shrink-0 text-center text-[9px] font-semibold tracking-wide text-white/65">
                   BOARD
@@ -977,11 +1019,8 @@ export default function GameBoard({
                     ) => (
                       <PlayingCard
                         key={`board-${index}`}
-                        card={
-                          card
-                        }
-                        size="compact"
-                        className="!w-[clamp(46px,12vw,60px)] !h-[clamp(52px,8dvh,68px)]"
+                        card={card}
+                        size="board"
                       />
                     ),
                   )}
@@ -1014,7 +1053,9 @@ export default function GameBoard({
           ) : (
             <Button
               type="button"
-              onClick={dealCards}
+              onClick={
+                dealCards
+              }
               className="shrink-0 h-11 w-full bg-green-600 hover:bg-green-700 text-white font-semibold"
             >
               NEXT HAND
@@ -1049,7 +1090,9 @@ export default function GameBoard({
         {showResult ? (
           <Button
             data-testid="button-new-game"
-            onClick={dealCards}
+            onClick={
+              dealCards
+            }
             size="icon"
             variant="secondary"
             className="rounded-full"
@@ -1301,7 +1344,9 @@ export default function GameBoard({
             feedback.time
           }
           onClose={() =>
-            setFeedback(null)
+            setFeedback(
+              null,
+            )
           }
           onNewGame={
             dealCards
