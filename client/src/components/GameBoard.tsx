@@ -914,7 +914,7 @@ export default function GameBoard({
           {/* HANDS */}
           <div className="flex-1 min-h-0 flex flex-col justify-center">
 
-            <div className="flex flex-col gap-[clamp(6px,1.05svh,10px)]">
+            <div className="flex flex-col gap-[clamp(12px,2svh,20px)]">
               {playerHands.map(
                 (hand, index) => {
                   const playerId =
@@ -1140,7 +1140,7 @@ export default function GameBoard({
         }}
       >
         <div className="w-full max-w-4xl px-2 sm:px-4">
-          <div className="grid grid-rows-[auto_auto_auto] gap-2 sm:gap-4">
+          <div className="grid grid-rows-[auto_auto_auto] gap-[clamp(12px,2.5svh,22px)]">
 
             <div className="flex justify-between items-start gap-2 sm:gap-4">
               {playerHands[0] && (
